@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  body {
+    background-color: #0b0f19;
+    color: #f3f4f6;
+    overflow-x: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+/* Custom 2D paper & game textures */
+.parchment-pattern {
+  background-color: #f7eed8;
+  background-image: radial-gradient(#d6c29b 1px, transparent 1px), radial-gradient(#e5d7b5 1px, #f7eed8 1px);
+  background-size: 20px 20px;
+  background-position: 0 0, 10px 10px;
+}
+
+.table-felt {
+  background: radial-gradient(circle at center, #1e293b 0%, #0f172a 70%, #090d16 100%);
+}
+
+.wood-border {
+  border-color: #78350f;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.8);
+}
+
+.gold-glow {
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+}
+
+.thief-glow {
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.45);
+}
+
+.police-glow {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.45);
+}
+
+.framed-jitter {
+  animation: jitter 0.15s ease-in-out infinite alternate;
+}
+
+@keyframes jitter {
+  0% { transform: translate(-1px, 1px) rotate(-0.5deg); }
+  100% { transform: translate(1px, -1px) rotate(0.5deg); }
+}

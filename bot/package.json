@@ -1,0 +1,14 @@
+{
+  "name": "chor-police-bot",
+  "version": "1.0.0",
+  "description": "Telegram Bot for Chor Police TMA",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "grammy": "^1.35.0"
+  }
+}

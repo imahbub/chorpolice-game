@@ -1,0 +1,6 @@
+node_modules
+dist
+.env
+.DS_Store
+*.log
+chor_police_mini_app_plan.md
