@@ -20,6 +20,7 @@ interface GameContextType {
   selectSuspect: (suspectId: string) => void;
   lockInArrest: (suspectId: string) => void;
   botPoliceGuess: () => void;
+  emergencyVerdict: () => void;
   nextRound: () => void;
   resetGame: () => void;
   changeMaxPlayers: (count: 4 | 5 | 6) => void;
@@ -34,6 +35,15 @@ const DEFAULT_NAMES = [
   'Farhan (ফারহান)',
   'Maya (মায়া)',
 ];
+
+const CHARSET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+export function generateRoomCode() {
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += CHARSET.charAt(Math.floor(Math.random() * CHARSET.length));
+  }
+  return `CP-${code}`;
+}
 
 const createInitialPlayers = (maxPlayers: 4 | 5 | 6): Player[] => {
   const tgUser = getTelegramWebApp()?.initDataUnsafe?.user;
@@ -52,6 +62,7 @@ const createInitialPlayers = (maxPlayers: 4 | 5 | 6): Player[] => {
     isPeeked: false,
     isRolePublic: false,
     isBot: i !== 0,
+    isOnline: true,
   }));
 };
 
@@ -61,25 +72,32 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [language, setLanguage] = useState<'en' | 'bn'>('en');
   const [activePlayerId, setActivePlayerId] = useState<string>('player_1');
 
-  const [state, setState] = useState<GameState>(() => ({
-    roomId: 'room_dev_1',
-    roomCode: 'CP-8492',
-    phase: 'LOBBY',
-    currentRound: 1,
-    maxRounds: 5,
-    maxPlayers: 4,
-    players: createInitialPlayers(4),
-    activePlayerId: 'player_1',
-    kingId: null,
-    policeId: null,
-    accusedId: null,
-    sabotageType: 'NONE',
-    sabotageTargetId: null,
-    timerSeconds: 10,
-    kingDecreeUsed: false,
-    decreeQuestion: null,
-    decreeAnswers: {},
-  }));
+  const [state, setState] = useState<GameState>(() => {
+    const startParam = getTelegramWebApp()?.initDataUnsafe?.start_param;
+    const roomCode = startParam
+      ? (startParam.startsWith('CP-') ? startParam : `CP-${startParam}`)
+      : generateRoomCode();
+
+    return {
+      roomId: `room_${roomCode.toLowerCase()}`,
+      roomCode: roomCode,
+      phase: 'LOBBY',
+      currentRound: 1,
+      maxRounds: 5,
+      maxPlayers: 4,
+      players: createInitialPlayers(4),
+      activePlayerId: 'player_1',
+      kingId: null,
+      policeId: null,
+      accusedId: null,
+      sabotageType: 'NONE',
+      sabotageTargetId: null,
+      timerSeconds: 10,
+      kingDecreeUsed: false,
+      decreeQuestion: null,
+      decreeAnswers: {},
+    };
+  });
 
   // Synchronize across tabs using BroadcastChannel
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -574,6 +592,25 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  // Emergency Royal Verdict (Resolves table if Police drops connection or is AFK)
+  const emergencyVerdict = () => {
+    setState((prev) => {
+      const suspects = prev.players.filter(
+        (p) => !p.isRolePublic && p.id !== prev.policeId
+      );
+      if (suspects.length === 0) return prev;
+      const target = prev.accusedId
+        ? suspects.find((s) => s.id === prev.accusedId) || suspects[0]
+        : suspects[0];
+
+      setTimeout(() => {
+        lockInArrest(target.id);
+      }, 300);
+
+      return prev;
+    });
+  };
+
   return (
     <GameContext.Provider
       value={{
@@ -594,6 +631,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         selectSuspect,
         lockInArrest,
         botPoliceGuess,
+        emergencyVerdict,
         nextRound,
         resetGame,
         changeMaxPlayers,

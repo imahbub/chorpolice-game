@@ -16,10 +16,18 @@ if (!BOT_TOKEN) {
 
 const bot = new Bot(BOT_TOKEN || 'DUMMY_TOKEN');
 
-// Helper to generate a room code
+// 6-Character collision-resistant room code generator (Over 1 billion unique rooms)
+const CHARSET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 function generateRoomCode() {
-  return `CP-${Math.floor(1000 + Math.random() * 9000)}`;
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += CHARSET.charAt(Math.floor(Math.random() * CHARSET.length));
+  }
+  return `CP-${code}`;
 }
+
+// In-memory rate-limiter: tracks last sent timestamp per chat to avoid 429
+const chatLastMessageTime = new Map();
 
 // /start command
 bot.command('start', async (ctx) => {
@@ -42,6 +50,16 @@ bot.command('start', async (ctx) => {
 
 // /play command for groups
 bot.command('play', async (ctx) => {
+  const chatId = ctx.chat.id;
+  const now = Date.now();
+  const lastTime = chatLastMessageTime.get(chatId) || 0;
+
+  // Rate-limit check: at most 1 /play per 3 seconds per group
+  if (now - lastTime < 3000) {
+    return; // Prevent group spam
+  }
+  chatLastMessageTime.set(chatId, now);
+
   const roomCode = generateRoomCode();
   const playUrl = `${WEBAPP_URL}?startapp=${roomCode}`;
 
@@ -61,7 +79,7 @@ bot.command('play', async (ctx) => {
   );
 });
 
-// Postback scorecard helper function
+// Postback scorecard with rate-limit protection
 export async function sendRoundRecapToChat(chatId, roundData) {
   const { roundNumber, correctArrest, thiefName, accusedName, scores } = roundData;
 

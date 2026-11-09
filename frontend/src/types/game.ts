@@ -106,6 +106,7 @@ export interface Player {
   isPeeked: boolean;
   isRolePublic: boolean;
   isBot?: boolean;
+  isOnline?: boolean;
   // Syndicate state
   isFramed?: boolean;
   hasBribeOffer?: boolean;

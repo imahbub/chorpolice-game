@@ -30,6 +30,7 @@ export const App: React.FC = () => {
     selectSuspect,
     lockInArrest,
     botPoliceGuess,
+    emergencyVerdict,
     nextRound,
     resetGame,
     changeMaxPlayers,
@@ -379,6 +380,7 @@ export const App: React.FC = () => {
               timerSeconds={state.timerSeconds}
               language={language}
               onBotPoliceDecide={botPoliceGuess}
+              onEmergencyVerdict={emergencyVerdict}
             />
           </div>
         )}

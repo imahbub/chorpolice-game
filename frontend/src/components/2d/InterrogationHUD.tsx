@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Player, Role } from '../../types/game';
 import { sound } from '../../utils/audio';
 import { haptic } from '../../utils/telegram';
-import { ShieldAlert, Search, Clock, MessageSquare, HandMetal, Bot, UserCheck } from 'lucide-react';
+import { ShieldAlert, Search, Clock, MessageSquare, HandMetal, Bot, UserCheck, Crown } from 'lucide-react';
 
 interface InterrogationHUDProps {
   isPolice: boolean;
@@ -17,6 +17,7 @@ interface InterrogationHUDProps {
   timerSeconds: number;
   language?: 'en' | 'bn';
   onBotPoliceDecide?: () => void;
+  onEmergencyVerdict?: () => void;
 }
 
 export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
@@ -31,6 +32,7 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
   timerSeconds,
   language = 'en',
   onBotPoliceDecide,
+  onEmergencyVerdict,
 }) => {
   const selectedSuspect = suspects.find((s) => s.id === selectedSuspectId);
 
@@ -214,6 +216,24 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
                 {language === 'bn'
                   ? `পুলিশ (${policePlayer?.name || 'AI'})-কে সিদ্ধান্ত নিতে বলুন`
                   : `Let Police (${policePlayer?.name || 'AI'}) decide now`}
+              </span>
+            </button>
+          )}
+          {/* Emergency Royal Verdict if Police drops out */}
+          {onEmergencyVerdict && activePlayerRole === 'RAJA' && timerSeconds <= 10 && (
+            <button
+              onClick={() => {
+                sound.playGavel();
+                haptic.impact('heavy');
+                onEmergencyVerdict();
+              }}
+              className="w-full mt-2 py-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/50 rounded-xl text-xs font-black text-amber-300 flex items-center justify-center gap-1.5 transition-all shadow"
+            >
+              <Crown className="w-4 h-4 text-amber-400" />
+              <span>
+                {language === 'bn'
+                  ? 'রাজকীয় ফরমান জারি (পুলিশ নিষ্ক্রিয়)'
+                  : 'Royal Emergency Verdict (Police Inactive)'}
               </span>
             </button>
           )}
