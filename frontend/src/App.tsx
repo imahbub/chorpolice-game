@@ -29,6 +29,7 @@ export const App: React.FC = () => {
     sendBluff,
     selectSuspect,
     lockInArrest,
+    botPoliceGuess,
     nextRound,
     resetGame,
     changeMaxPlayers,
@@ -368,6 +369,8 @@ export const App: React.FC = () => {
 
             <InterrogationHUD
               isPolice={isPolice}
+              policePlayer={state.players.find((p) => p.id === state.policeId)}
+              activePlayerRole={activePlayer?.currentRole}
               suspects={suspects}
               selectedSuspectId={state.accusedId}
               onSelectSuspect={selectSuspect}
@@ -375,6 +378,7 @@ export const App: React.FC = () => {
               onSendBluff={sendBluff}
               timerSeconds={state.timerSeconds}
               language={language}
+              onBotPoliceDecide={botPoliceGuess}
             />
           </div>
         )}

@@ -1,12 +1,14 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Player } from '../../types/game';
+import { Player, Role } from '../../types/game';
 import { sound } from '../../utils/audio';
 import { haptic } from '../../utils/telegram';
-import { ShieldAlert, Search, Clock, MessageSquare, HandMetal } from 'lucide-react';
+import { ShieldAlert, Search, Clock, MessageSquare, HandMetal, Bot, UserCheck } from 'lucide-react';
 
 interface InterrogationHUDProps {
   isPolice: boolean;
+  policePlayer?: Player;
+  activePlayerRole?: Role | null;
   suspects: Player[];
   selectedSuspectId: string | null;
   onSelectSuspect: (suspectId: string) => void;
@@ -14,10 +16,13 @@ interface InterrogationHUDProps {
   onSendBluff: (text: string) => void;
   timerSeconds: number;
   language?: 'en' | 'bn';
+  onBotPoliceDecide?: () => void;
 }
 
 export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
   isPolice,
+  policePlayer,
+  activePlayerRole,
   suspects,
   selectedSuspectId,
   onSelectSuspect,
@@ -25,6 +30,7 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
   onSendBluff,
   timerSeconds,
   language = 'en',
+  onBotPoliceDecide,
 }) => {
   const selectedSuspect = suspects.find((s) => s.id === selectedSuspectId);
 
@@ -46,12 +52,12 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
 
   return (
     <div className="w-full max-w-md mx-auto my-2 p-3 bg-slate-900/95 backdrop-blur-md rounded-2xl border-2 border-blue-500/50 shadow-2xl text-white">
-      {/* Timer & Phase Header */}
-      <div className="flex items-center justify-between mb-3 pb-2 border-b border-blue-500/30 text-xs">
+      {/* Timer & Police Indicator Header */}
+      <div className="flex items-center justify-between mb-2 pb-2 border-b border-blue-500/30 text-xs">
         <div className="flex items-center gap-1.5 text-blue-300 font-black">
           <Search className="w-4 h-4 text-blue-400" />
           <span>
-            {language === 'bn' ? 'পুলিশি জেরা ও তদন্ত পর্ব' : 'POLICE INTERROGATION'}
+            {language === 'bn' ? 'পুলিশি জেরা ও তদন্ত' : 'POLICE INTERROGATION'}
           </span>
         </div>
         <div className="flex items-center gap-1 px-2.5 py-0.5 bg-blue-950 text-blue-200 rounded-full font-bold border border-blue-700">
@@ -60,7 +66,29 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
         </div>
       </div>
 
-      {/* POLICE CONTROLS */}
+      {/* Role Banner: Clearly explains WHO is deciding */}
+      <div className="mb-3 px-3 py-2 rounded-xl bg-blue-950/60 border border-blue-500/40 text-xs flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <UserCheck className="w-4 h-4 text-amber-400 shrink-0" />
+          <div>
+            <span className="text-slate-300 block text-[11px]">
+              {language === 'bn' ? 'দায়িত্বপ্রাপ্ত পুলিশ:' : 'Investigating Police:'}{' '}
+              <strong className="text-white font-black">{policePlayer?.name || 'Police'}</strong>
+            </span>
+            <span className="text-amber-300 font-bold text-[10px]">
+              {isPolice
+                ? language === 'bn'
+                  ? '👉 আপনিই পুলিশ! নিচের সন্দেহভাজনদের একজনকে গ্রেপ্তার করুন।'
+                  : '👉 You are the Police! Tap a suspect below to arrest.'
+                : language === 'bn'
+                ? `👀 আপনার ভূমিকা: ${activePlayerRole || 'সন্দেহভাজন'}। পুলিশ সিদ্ধান্ত নেওয়ার আগে নিজের সাফাই দিন!`
+                : `👀 Your Role: ${activePlayerRole || 'Suspect'}. Defend yourself while Police investigates!`}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 1. POLICE CONTROLS (Active if the current user is Police) */}
       {isPolice ? (
         <div>
           <div className="text-center mb-2">
@@ -142,7 +170,7 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
           </motion.button>
         </div>
       ) : (
-        /* SUSPECT / CIVILIAN CONTROLS (Bluff deck) */
+        /* 2. SUSPECT / CIVILIAN CONTROLS (Bluff deck + Bot helper) */
         <div>
           <div className="flex items-center gap-1.5 text-xs text-amber-300 font-bold mb-2">
             <MessageSquare className="w-4 h-4" />
@@ -153,7 +181,7 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
             </span>
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 mb-3">
             {bluffOptions.map((text, idx) => (
               <motion.button
                 key={idx}
@@ -170,6 +198,25 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
               </motion.button>
             ))}
           </div>
+
+          {/* If the Police is a bot or you are testing solo: trigger Police decision */}
+          {onBotPoliceDecide && (
+            <button
+              onClick={() => {
+                sound.playLockIn();
+                haptic.impact('medium');
+                onBotPoliceDecide();
+              }}
+              className="w-full py-2 bg-blue-900/40 hover:bg-blue-900/60 border border-blue-500/40 rounded-xl text-xs font-bold text-blue-200 flex items-center justify-center gap-1.5 transition-all"
+            >
+              <Bot className="w-4 h-4 text-amber-400" />
+              <span>
+                {language === 'bn'
+                  ? `পুলিশ (${policePlayer?.name || 'AI'})-কে সিদ্ধান্ত নিতে বলুন`
+                  : `Let Police (${policePlayer?.name || 'AI'}) decide now`}
+              </span>
+            </button>
+          )}
         </div>
       )}
     </div>

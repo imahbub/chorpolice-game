@@ -19,6 +19,7 @@ interface GameContextType {
   sendBluff: (text: string) => void;
   selectSuspect: (suspectId: string) => void;
   lockInArrest: (suspectId: string) => void;
+  botPoliceGuess: () => void;
   nextRound: () => void;
   resetGame: () => void;
   changeMaxPlayers: (count: 4 | 5 | 6) => void;
@@ -541,17 +542,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (state.phase === 'INTERROGATION') {
       const interval = setInterval(() => {
         setState((prev) => {
-          if (prev.timerSeconds <= 1) {
+          if (prev.timerSeconds <= 0) {
             clearInterval(interval);
-            // If timer runs out, auto arrest first available suspect
-            const suspects = prev.players.filter(
-              (p) => !p.isRolePublic && p.id !== prev.policeId
-            );
-            const autoTarget = suspects[0]?.id;
-            if (autoTarget) {
-              lockInArrest(autoTarget);
-            }
-            return prev;
+            return prev; // Hold at 0 without auto-guessing
           }
           return { ...prev, timerSeconds: prev.timerSeconds - 1 };
         });
@@ -559,6 +552,27 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return () => clearInterval(interval);
     }
   }, [state.phase]);
+
+  // AI Police deliberate decision
+  const botPoliceGuess = () => {
+    setState((prev) => {
+      const suspects = prev.players.filter(
+        (p) => !p.isRolePublic && p.id !== prev.policeId
+      );
+      if (suspects.length === 0) return prev;
+      // If a suspect is framed, AI has higher suspicion on them, or pick random
+      const framed = suspects.find((s) => s.isFramed);
+      const chosen = framed && Math.random() < 0.65
+        ? framed
+        : suspects[Math.floor(Math.random() * suspects.length)];
+
+      setTimeout(() => {
+        lockInArrest(chosen.id);
+      }, 500);
+
+      return prev;
+    });
+  };
 
   return (
     <GameContext.Provider
@@ -579,6 +593,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sendBluff,
         selectSuspect,
         lockInArrest,
+        botPoliceGuess,
         nextRound,
         resetGame,
         changeMaxPlayers,
