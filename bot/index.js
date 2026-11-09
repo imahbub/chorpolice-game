@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import http from 'http';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -107,6 +108,22 @@ export async function sendRoundRecapToChat(chatId, roundData) {
     console.error('Failed to send round recap to chat:', err);
   }
 }
+
+// Lightweight HTTP Health Check server (for Render, Railway, Fly.io, or VPS)
+const PORT = process.env.PORT || 3000;
+const healthServer = http.createServer((req, res) => {
+  if (req.url === '/health' || req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', bot: '@chorpolicegamebot', uptime: process.uptime() }));
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
+
+healthServer.listen(PORT, () => {
+  console.log(`🌐 Health check server listening on port ${PORT}`);
+});
 
 if (BOT_TOKEN && BOT_TOKEN !== 'DUMMY_TOKEN') {
   bot.start({

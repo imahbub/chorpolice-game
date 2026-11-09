@@ -1,14 +1,11 @@
 import React, { useState } from 'react';
 import { Player } from '../types/game';
-import { sound } from '../utils/audio';
-import { Volume2, VolumeX, Globe, ChevronDown, ChevronUp, Bot, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronUp, Bot, Sparkles, Wrench } from 'lucide-react';
 
 interface DevModeSwitcherProps {
   players: Player[];
   activePlayerId: string;
   onSwitchPlayer: (playerId: string) => void;
-  language: 'en' | 'bn';
-  onToggleLanguage: () => void;
   maxPlayers: 4 | 5 | 6;
   onChangeMaxPlayers: (count: 4 | 5 | 6) => void;
   onAddBotSeat: () => void;
@@ -18,63 +15,48 @@ export const DevModeSwitcher: React.FC<DevModeSwitcherProps> = ({
   players,
   activePlayerId,
   onSwitchPlayer,
-  language,
-  onToggleLanguage,
   maxPlayers,
   onChangeMaxPlayers,
   onAddBotSeat,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isMuted, setIsMuted] = useState(sound.getMuted());
+
+  // Hidden in public production unless explicitly enabled via ?dev=true or local dev
+  const isDevVisible = Boolean(
+    typeof window !== 'undefined' &&
+    (new URLSearchParams(window.location.search).has('dev') || import.meta.env.DEV)
+  );
+
+  if (!isDevVisible) {
+    return null; // Completely removed from public app
+  }
 
   const activePlayer = players.find((p) => p.id === activePlayerId);
 
-  const handleToggleSound = () => {
-    const muted = sound.toggleMute();
-    setIsMuted(muted);
-  };
-
   return (
-    <div className="fixed top-2 right-2 z-40 flex flex-col items-end">
-      {/* Top Quick Bar */}
-      <div className="flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-md px-2.5 py-1.5 rounded-full border border-slate-700 shadow-xl text-xs">
-        {/* Language switch */}
-        <button
-          onClick={onToggleLanguage}
-          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded-full font-bold text-[11px] text-amber-300 border border-slate-600 flex items-center gap-1"
-          title="Toggle Language"
-        >
-          <Globe className="w-3 h-3" />
-          <span>{language === 'bn' ? 'বাংলা' : 'EN'}</span>
-        </button>
+    <div className="fixed bottom-3 right-3 z-50 flex flex-col items-end">
+      {/* Dev Toggle Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-900/90 hover:bg-purple-800 text-purple-200 rounded-full font-bold text-xs border border-purple-500/50 shadow-2xl backdrop-blur-md cursor-pointer"
+      >
+        <Wrench className="w-3.5 h-3.5 text-amber-400" />
+        <span>Dev Tools:</span>
+        <span className="font-black text-amber-300 truncate max-w-[70px]">
+          {activePlayer?.name ?? 'Seat'}
+        </span>
+        {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
 
-        {/* Audio mute switch */}
-        <button
-          onClick={handleToggleSound}
-          className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-full text-slate-300 border border-slate-600"
-          title={isMuted ? 'Unmute Sound' : 'Mute Sound'}
-        >
-          {isMuted ? <VolumeX className="w-3.5 h-3.5 text-red-400" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
-        </button>
-
-        {/* Dev Dropdown Trigger */}
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex items-center gap-1 px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-full font-bold text-[11px] border border-amber-500/40"
-        >
-          <Sparkles className="w-3 h-3 text-amber-400" />
-          <span className="hidden sm:inline">Dev Mode:</span>
-          <span className="font-black truncate max-w-[60px]">{activePlayer?.name ?? 'Seat'}</span>
-          {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-        </button>
-      </div>
-
-      {/* Expanded Dev Panel */}
+      {/* Expanded Dev Testing Panel */}
       {isOpen && (
-        <div className="mt-2 w-72 bg-slate-900/95 backdrop-blur-lg border border-slate-700 rounded-2xl p-3 shadow-2xl text-xs text-slate-200">
+        <div className="mb-2 w-72 bg-slate-900/95 backdrop-blur-xl border border-purple-500/40 rounded-2xl p-3 shadow-2xl text-xs text-slate-200">
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-700 text-amber-300 font-bold">
-            <span>Multi-Player Testing Deck</span>
-            <span className="text-[10px] text-slate-400">4-6 Seats</span>
+            <span className="flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Multi-Player Testing Deck</span>
+            </span>
+            <span className="text-[10px] text-slate-400">Owner Only</span>
           </div>
 
           {/* Seat Capacity selector */}
@@ -110,9 +92,7 @@ export const DevModeSwitcher: React.FC<DevModeSwitcherProps> = ({
                 return (
                   <button
                     key={p.id}
-                    onClick={() => {
-                      onSwitchPlayer(p.id);
-                    }}
+                    onClick={() => onSwitchPlayer(p.id)}
                     className={`p-1.5 rounded-lg text-left border flex items-center justify-between transition-all ${
                       isCurrent
                         ? 'bg-amber-500/20 border-amber-400 text-amber-300 font-black'
@@ -143,7 +123,7 @@ export const DevModeSwitcher: React.FC<DevModeSwitcherProps> = ({
           )}
 
           <div className="mt-2 text-[10px] text-slate-400 text-center italic">
-            Tip: Open this page in multiple browser tabs to test multi-player sync!
+            Tip: Hidden on public app. Access with ?dev=true in URL.
           </div>
         </div>
       )}
