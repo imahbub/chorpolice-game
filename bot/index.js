@@ -9,13 +9,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config();
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const BOT_USERNAME = (process.env.TELEGRAM_BOT_USERNAME || 'chorpolicegamebot').replace(/^@/, '');
-const APP_SHORT_NAME = process.env.TELEGRAM_APP_SHORT_NAME || ''; // e.g. "game" if created via /newapp
-const WEBAPP_URL = process.env.TELEGRAM_WEBAPP_URL || 'https://chorpolice-tabletop.pages.dev';
+const cleanEnv = (val) => (val || '').trim().replace(/^["']|["']$/g, '');
 
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const BOT_TOKEN = cleanEnv(process.env.TELEGRAM_BOT_TOKEN);
+const BOT_USERNAME = cleanEnv(process.env.TELEGRAM_BOT_USERNAME || 'chorpolicegamebot').replace(/^@/, '');
+const APP_SHORT_NAME = cleanEnv(process.env.TELEGRAM_APP_SHORT_NAME);
+const WEBAPP_URL = cleanEnv(process.env.TELEGRAM_WEBAPP_URL || 'https://chorpolice-tabletop.pages.dev');
+
+const SUPABASE_URL = cleanEnv(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL);
+const SUPABASE_KEY = cleanEnv(
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+);
 
 if (!BOT_TOKEN) {
   console.warn('⚠️ TELEGRAM_BOT_TOKEN is not set. Please provide it in .env');
@@ -23,6 +27,16 @@ if (!BOT_TOKEN) {
 
 const bot = new Bot(BOT_TOKEN || 'DUMMY_TOKEN');
 const supabase = SUPABASE_URL && SUPABASE_KEY ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+console.log(`🔧 Bot Startup Config:`);
+console.log(`   • Bot Username: @${BOT_USERNAME}`);
+console.log(`   • WebApp URL: ${WEBAPP_URL}`);
+console.log(`   • Supabase Connected: ${Boolean(supabase)}`);
+
+// Prevent unhandled middleware errors from crashing the process
+bot.catch((err) => {
+  console.error('⚠️ Grammy middleware error:', err.message);
+});
 
 // 6-Character collision-resistant room code generator (Over 1 billion unique rooms)
 const CHARSET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -49,7 +63,6 @@ bot.command('start', async (ctx) => {
   const isPrivate = ctx.chat.type === 'private';
   const threadId = ctx.message?.message_thread_id;
 
-  // Check if /start has a room payload (deep link fallback)
   const payload = ctx.match?.trim();
   const targetUrl = payload ? `${WEBAPP_URL}?startapp=${payload}` : WEBAPP_URL;
 
@@ -80,19 +93,15 @@ bot.command('play', async (ctx) => {
   const now = Date.now();
   const lastTime = chatLastMessageTime.get(chatId) || 0;
 
-  // Rate-limit check: at most 1 /play per 3 seconds per group
   if (now - lastTime < 3000) {
     return;
   }
   chatLastMessageTime.set(chatId, now);
 
-  // Allow optional player count: /play 5 or /play 6
   const arg = parseInt(ctx.match?.trim() || '4', 10);
   const maxPlayers = [4, 5, 6].includes(arg) ? arg : 4;
-
   const roomCode = generateRoomCode();
 
-  // Persist room in Supabase with Group & Topic IDs
   if (supabase) {
     const { error } = await supabase.from('rooms').insert({
       room_code: roomCode,
@@ -107,12 +116,9 @@ bot.command('play', async (ctx) => {
     }
   }
 
-  // Telegram strictly requires `url` (Direct Mini App Link) inside groups/topics,
-  // while `webApp` works natively in private 1-on-1 chats.
   const keyboard = isPrivate
     ? new InlineKeyboard().webApp(`🎮 Sit at Table #${roomCode}`, `${WEBAPP_URL}?startapp=${roomCode}`)
-    : new InlineKeyboard()
-        .url(`🎮 Join Table #${roomCode} (টেবিলে বসুন)`, getDirectMiniAppUrl(roomCode));
+    : new InlineKeyboard().url(`🎮 Join Table #${roomCode} (টেবিলে বসুন)`, getDirectMiniAppUrl(roomCode));
 
   const replyOptions = {
     parse_mode: 'Markdown',
@@ -220,28 +226,74 @@ if (supabase) {
     .subscribe();
 }
 
-// Lightweight HTTP Health Check server (for Render, Railway, Fly.io, or VPS)
-const PORT = process.env.PORT || 3000;
+// Lightweight HTTP Health Check server (binds to 0.0.0.0 for Render)
+const PORT = parseInt(process.env.PORT || '3000', 10);
 const healthServer = http.createServer((req, res) => {
   if (req.url === '/health' || req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', bot: `@${BOT_USERNAME}`, uptime: process.uptime() }));
+    res.end(
+      JSON.stringify({
+        status: 'ok',
+        bot: `@${BOT_USERNAME}`,
+        supabaseConnected: Boolean(supabase),
+        uptime: process.uptime(),
+      })
+    );
   } else {
     res.writeHead(404);
     res.end();
   }
 });
 
-healthServer.listen(PORT, () => {
-  console.log(`🌐 Health check server listening on port ${PORT}`);
+healthServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`🌐 Health check server listening on 0.0.0.0:${PORT}`);
 });
 
-if (BOT_TOKEN && BOT_TOKEN !== 'DUMMY_TOKEN') {
-  bot.start({
-    onStart: (botInfo) => {
-      console.log(`🤖 Chor Police Bot @${botInfo.username} is running!`);
-    },
-  });
-} else {
-  console.log('🤖 Bot ready in placeholder mode (Waiting for TELEGRAM_BOT_TOKEN).');
+// Resilient polling starter: handles 409 Conflict during overlapping rolling deploys on Render
+let isShuttingDown = false;
+
+async function startPollingWithRetry() {
+  if (!BOT_TOKEN || BOT_TOKEN === 'DUMMY_TOKEN') {
+    console.log('🤖 Bot ready in placeholder mode (Waiting for TELEGRAM_BOT_TOKEN).');
+    return;
+  }
+
+  while (!isShuttingDown) {
+    try {
+      await bot.start({
+        drop_pending_updates: false,
+        onStart: (botInfo) => {
+          console.log(`🤖 Chor Police Bot @${botInfo.username} is running!`);
+        },
+      });
+      break; // Exited cleanly
+    } catch (err) {
+      const msg = err?.message || String(err);
+      if (msg.includes('409') || msg.toLowerCase().includes('conflict')) {
+        console.warn('⏳ Telegram 409 Conflict (previous Render instance still shutting down). Retrying in 4s...');
+        await new Promise((r) => setTimeout(r, 4000));
+      } else {
+        console.error('❌ Bot polling error:', msg, '— Retrying in 5s...');
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+    }
+  }
 }
+
+startPollingWithRetry();
+
+// Graceful shutdown for Render rolling deploys
+const shutdown = async (signal) => {
+  console.log(`🛑 Received ${signal}. Stopping bot gracefully...`);
+  isShuttingDown = true;
+  try {
+    await bot.stop();
+  } catch {
+    // Ignore
+  }
+  healthServer.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 2000);
+};
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
