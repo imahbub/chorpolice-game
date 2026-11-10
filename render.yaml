@@ -12,5 +12,11 @@ services:
         value: "@chorpolicegamebot"
       - key: TELEGRAM_WEBAPP_URL
         sync: false
+      - key: TELEGRAM_APP_SHORT_NAME
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
       - key: PORT
         value: 3000

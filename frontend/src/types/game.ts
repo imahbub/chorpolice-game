@@ -91,6 +91,7 @@ export type GamePhase =
   | 'INTERROGATION'
   | 'ARREST'
   | 'RESOLUTION'
+  | 'RESOLVED'
   | 'RECAP';
 
 export interface Player {
@@ -119,8 +120,14 @@ export interface Player {
 export type SabotageType = 'FRAME' | 'BRIBE' | 'NONE';
 
 export interface GameState {
+  mode: 'HUB' | 'ONLINE' | 'LOCAL';
   roomId: string;
   roomCode: string;
+  currentRoundId?: string | null;
+  telegramChatId?: number | null;
+  telegramThreadId?: number | null;
+  isLoading?: boolean;
+  errorMessage?: string | null;
   phase: GamePhase;
   currentRound: number;
   maxRounds: number;

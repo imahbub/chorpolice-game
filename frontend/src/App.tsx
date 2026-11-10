@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useGame } from './context/GameContext';
+import { HomeHub } from './components/HomeHub';
 import { ChitCard } from './components/2d/ChitCard';
 import { TableSeats } from './components/2d/TableSeats';
 import { SabotageHUD } from './components/2d/SabotageHUD';
@@ -8,8 +9,23 @@ import { ResolutionModal } from './components/2d/ResolutionModal';
 import { DevModeSwitcher } from './components/DevModeSwitcher';
 import { RoleBadge } from './components/2d/RoleBadge';
 import { sound } from './utils/audio';
-import { haptic } from './utils/telegram';
-import { Crown, Sparkles, Share2, Play, CheckCircle2, ShieldCheck, BookOpen, Volume2, VolumeX, Globe } from 'lucide-react';
+import { haptic, getTelegramWebApp } from './utils/telegram';
+import {
+  Crown,
+  Sparkles,
+  Share2,
+  Play,
+  CheckCircle2,
+  ShieldCheck,
+  BookOpen,
+  Volume2,
+  VolumeX,
+  Globe,
+  LogOut,
+  Copy,
+  Bot,
+  AlertCircle,
+} from 'lucide-react';
 import { Role, ROLE_CONFIGS } from './types/game';
 
 export const App: React.FC = () => {
@@ -17,6 +33,10 @@ export const App: React.FC = () => {
     state,
     language,
     toggleLanguage,
+    createOnlineRoom,
+    joinOnlineRoom,
+    startLocalPractice,
+    leaveRoom,
     switchActivePlayer,
     toggleReady,
     startGame,
@@ -37,7 +57,7 @@ export const App: React.FC = () => {
     addBotSeat,
   } = useGame();
 
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [isMuted, setIsMuted] = useState(sound.getMuted());
 
@@ -56,27 +76,49 @@ export const App: React.FC = () => {
     (p) => !p.isRolePublic && p.id !== state.policeId
   );
 
+  const botUsername = (import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'chorpolicegamebot').replace(/^@/, '');
+  const getInviteUrl = () => {
+    // Uses Telegram Mini App direct link when inside Telegram ecosystem
+    return `https://t.me/${botUsername}?startapp=${state.roomCode}`;
+  };
 
-  const handleCopyLink = () => {
-    const inviteUrl = `https://t.me/ChorPoliceBot/game?startapp=${state.roomCode}`;
-    navigator.clipboard?.writeText(inviteUrl).catch(() => {});
-    setCopiedLink(true);
+  const handleCopyCode = () => {
+    navigator.clipboard?.writeText(state.roomCode).catch(() => {});
+    setCopiedCode(true);
     sound.playPaperRustle();
     haptic.notification('success');
-    setTimeout(() => setCopiedLink(false), 2500);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleShareTelegram = () => {
+    const inviteUrl = getInviteUrl();
+    const shareText = `👑 Join my Chor Police (চোর পুলিশ) table! Code: ${state.roomCode}`;
+    const tgShare = `https://t.me/share/url?url=${encodeURIComponent(inviteUrl)}&text=${encodeURIComponent(shareText)}`;
+
+    sound.playPaperRustle();
+    haptic.impact('medium');
+
+    const tgWebApp = getTelegramWebApp();
+    if (tgWebApp?.openTelegramLink) {
+      tgWebApp.openTelegramLink(tgShare);
+    } else {
+      window.open(tgShare, '_blank');
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#0B0F19] text-white flex flex-col justify-between relative selection:bg-amber-500 selection:text-black">
-      {/* Dev Mode Testing Panel (Only visible with ?dev=true or in development) */}
-      <DevModeSwitcher
-        players={state.players}
-        activePlayerId={state.activePlayerId}
-        onSwitchPlayer={switchActivePlayer}
-        maxPlayers={state.maxPlayers}
-        onChangeMaxPlayers={changeMaxPlayers}
-        onAddBotSeat={addBotSeat}
-      />
+      {/* Dev Mode Testing Panel (Only visible with ?dev=true or in local dev) */}
+      {state.mode !== 'HUB' && (
+        <DevModeSwitcher
+          players={state.players}
+          activePlayerId={state.activePlayerId}
+          onSwitchPlayer={switchActivePlayer}
+          maxPlayers={state.maxPlayers}
+          onChangeMaxPlayers={changeMaxPlayers}
+          onAddBotSeat={addBotSeat}
+        />
+      )}
 
       {/* Header Bar */}
       <header className="w-full max-w-lg mx-auto pt-3 px-4 flex items-center justify-between z-20">
@@ -87,12 +129,16 @@ export const App: React.FC = () => {
           <div>
             <h1 className="text-base font-black tracking-tight text-white flex items-center gap-1.5">
               <span>{language === 'bn' ? 'চোর পুলিশ' : 'CHOR POLICE'}</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-                #{state.roomCode}
-              </span>
+              {state.mode !== 'HUB' && state.roomCode && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                  #{state.roomCode}
+                </span>
+              )}
             </h1>
             <p className="text-[10px] text-slate-400 font-medium">
-              {language === 'bn' ? 'ঐতিহ্যবাহী সামাজিক আড্ডা' : 'Royal Tabletop Game'} • {state.maxPlayers} {language === 'bn' ? 'খেলোয়াড়' : 'Players'}
+              {state.mode === 'HUB'
+                ? language === 'bn' ? 'রয়্যাল সোশ্যাল কার্ড গেম' : 'Royal Tabletop Game'
+                : `${state.players.length}/${state.maxPlayers} ${language === 'bn' ? 'খেলোয়াড়' : 'Players'}`}
             </p>
           </div>
         </div>
@@ -126,11 +172,23 @@ export const App: React.FC = () => {
             <BookOpen className="w-3.5 h-3.5" />
           </button>
 
-          {/* Round Counter */}
-          <div className="px-2.5 py-1 bg-slate-900/80 rounded-full border border-slate-700 text-xs font-black text-amber-400 shadow flex items-center gap-1">
-            <Sparkles className="w-3 h-3" />
-            <span>R{state.currentRound}/{state.maxRounds}</span>
-          </div>
+          {/* Round Counter or Leave Room */}
+          {state.mode !== 'HUB' && (
+            <>
+              <div className="px-2 py-1 bg-slate-900/80 rounded-full border border-slate-700 text-[11px] font-black text-amber-400 shadow flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                <span>R{state.currentRound}/{state.maxRounds}</span>
+              </div>
+
+              <button
+                onClick={leaveRoom}
+                className="p-1.5 bg-slate-800 hover:bg-red-900/60 rounded-full text-slate-300 hover:text-red-300 border border-slate-700 cursor-pointer shadow"
+                title="Leave Room"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
         </div>
       </header>
 
@@ -183,11 +241,58 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* MAIN GAMEPLAY CONTENT CONTAINER */}
+      {/* MAIN CONTENT */}
       <main className="w-full max-w-md mx-auto my-auto px-4 py-2 flex flex-col items-center justify-center flex-1 z-10">
+        {/* HUB MODE: Create Custom Room / Join by Code */}
+        {state.mode === 'HUB' && (
+          <HomeHub
+            language={language}
+            isLoading={state.isLoading}
+            errorMessage={state.errorMessage}
+            onCreateRoom={createOnlineRoom}
+            onJoinRoom={joinOnlineRoom}
+            onStartLocalPractice={startLocalPractice}
+          />
+        )}
+
         {/* PHASE 1: LOBBY */}
-        {state.phase === 'LOBBY' && (
+        {state.mode !== 'HUB' && state.phase === 'LOBBY' && (
           <div className="w-full flex flex-col items-center">
+            {/* Room Code Share Card */}
+            <div className="w-full mb-2 px-3 py-2 bg-slate-900/90 border border-amber-500/30 rounded-2xl flex items-center justify-between shadow-lg">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">
+                  {language === 'bn' ? 'রুম কোড' : 'Room Code'}
+                </span>
+                <span className="text-base font-black tracking-widest text-amber-300">
+                  {state.roomCode}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={handleCopyCode}
+                  className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <Copy className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{copiedCode ? (language === 'bn' ? 'কপি!' : 'Copied!') : (language === 'bn' ? 'কপি' : 'Copy')}</span>
+                </button>
+                <button
+                  onClick={handleShareTelegram}
+                  className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-500 rounded-xl text-[11px] font-bold flex items-center gap-1 text-white shadow cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>{language === 'bn' ? 'শেয়ার' : 'Share'}</span>
+                </button>
+              </div>
+            </div>
+
+            {state.errorMessage && (
+              <div className="w-full mb-2 p-2.5 bg-red-950/80 border border-red-500/50 rounded-xl text-xs text-red-200 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                <span>{state.errorMessage}</span>
+              </div>
+            )}
+
             {/* 2D Table with Player Seats */}
             <TableSeats
               players={state.players}
@@ -197,7 +302,7 @@ export const App: React.FC = () => {
             />
 
             {/* Lobby Actions */}
-            <div className="w-full mt-4 space-y-2">
+            <div className="w-full mt-3 space-y-2">
               <div className="flex gap-2">
                 {/* Ready Button */}
                 <button
@@ -220,30 +325,46 @@ export const App: React.FC = () => {
                   </span>
                 </button>
 
-                {/* Telegram Share Button */}
-                <button
-                  onClick={handleCopyLink}
-                  className="py-3 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 text-slate-200 cursor-pointer"
-                  title="Share Telegram Link"
-                >
-                  <Share2 className="w-4 h-4 text-blue-400" />
-                  <span>{copiedLink ? (language === 'bn' ? 'কপি হয়েছে!' : 'Copied!') : (language === 'bn' ? 'আমন্ত্রণ' : 'Invite')}</span>
-                </button>
+                {/* Add AI Bot Button (When room has empty seats) */}
+                {isHost && state.players.length < state.maxPlayers && (
+                  <button
+                    onClick={() => {
+                      addBotSeat();
+                      sound.playPaperRustle();
+                      haptic.selection();
+                    }}
+                    className="py-3 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 text-amber-300 cursor-pointer"
+                  >
+                    <Bot className="w-4 h-4" />
+                    <span>{language === 'bn' ? '+ এআই' : '+ AI Bot'}</span>
+                  </button>
+                )}
               </div>
 
               {/* Host Start Game Button */}
               {isHost ? (
                 <button
+                  disabled={state.players.length < 4}
                   onClick={() => {
                     startGame();
                     sound.playGavel();
                     haptic.impact('heavy');
                   }}
-                  className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-sm rounded-xl shadow-xl flex items-center justify-center gap-2 cursor-pointer border border-amber-300"
+                  className={`w-full py-3.5 font-black text-sm rounded-xl shadow-xl flex items-center justify-center gap-2 border transition-all ${
+                    state.players.length >= 4
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border-amber-300 cursor-pointer'
+                      : 'bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed'
+                  }`}
                 >
-                  <Play className="w-4 h-4 fill-black" />
+                  <Play className="w-4 h-4 fill-current" />
                   <span>
-                    {language === 'bn' ? 'চিট বণ্টন করুন ও খেলা শুরু' : 'DEAL CHITS & START'}
+                    {state.players.length < 4
+                      ? language === 'bn'
+                        ? `শুরু করতে আরও ${4 - state.players.length} জন প্রয়োজন`
+                        : `Need ${4 - state.players.length} more player(s) to deal`
+                      : language === 'bn'
+                      ? 'চিট বণ্টন করুন ও খেলা শুরু'
+                      : 'DEAL CHITS & START'}
                   </span>
                 </button>
               ) : (
@@ -256,7 +377,7 @@ export const App: React.FC = () => {
         )}
 
         {/* PHASE 2: DEAL & PEEK */}
-        {state.phase === 'DEAL' && (
+        {state.mode !== 'HUB' && state.phase === 'DEAL' && (
           <div className="w-full flex flex-col items-center text-center">
             <div className="mb-3">
               <span className="text-xs text-amber-300 font-bold uppercase tracking-wider block">
@@ -269,14 +390,12 @@ export const App: React.FC = () => {
               </p>
             </div>
 
-            {/* Interactive Paper Chit Card */}
             <ChitCard
               role={activePlayer?.currentRole ?? null}
               onPeek={peekRole}
               language={language}
             />
 
-            {/* King Call Button (If King) */}
             {isKing && (
               <div className="mt-4 w-full">
                 <button
@@ -310,8 +429,8 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* PHASE 3: ROYAL CALL (King Revealed, Police Steps Up) */}
-        {state.phase === 'ROYAL_CALL' && (
+        {/* PHASE 3: ROYAL CALL */}
+        {state.mode !== 'HUB' && state.phase === 'ROYAL_CALL' && (
           <div className="w-full flex flex-col items-center text-center">
             <div className="p-4 bg-amber-950/40 border-2 border-amber-500/60 rounded-3xl w-full mb-3 shadow-2xl flex flex-col items-center">
               <RoleBadge role="RAJA" size="lg" language={language} />
@@ -325,7 +444,6 @@ export const App: React.FC = () => {
               </p>
             </div>
 
-            {/* Police Step Up Button */}
             {isPolice ? (
               <button
                 onClick={() => {
@@ -353,10 +471,9 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* PHASE 4: SABOTAGE (The Syndicate Phase) */}
-        {state.phase === 'SABOTAGE' && (
+        {/* PHASE 4: SABOTAGE */}
+        {state.mode !== 'HUB' && state.phase === 'SABOTAGE' && (
           <div className="w-full flex flex-col items-center">
-            {/* Table layout showing suspects */}
             <TableSeats
               players={state.players}
               activePlayerId={state.activePlayerId}
@@ -364,7 +481,6 @@ export const App: React.FC = () => {
               language={language}
             />
 
-            {/* Sabotage HUD controls */}
             <SabotageHUD
               isThief={isThief}
               isKing={isKing}
@@ -381,8 +497,8 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* PHASE 5: INTERROGATION & ARREST */}
-        {state.phase === 'INTERROGATION' && (
+        {/* PHASE 5: INTERROGATION */}
+        {state.mode !== 'HUB' && state.phase === 'INTERROGATION' && (
           <div className="w-full flex flex-col items-center">
             <TableSeats
               players={state.players}
@@ -410,8 +526,8 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* PHASE 6: RESOLUTION & SCORE TALLY */}
-        {state.phase === 'RESOLUTION' && (
+        {/* PHASE 6: RESOLUTION */}
+        {state.mode !== 'HUB' && (state.phase === 'RESOLUTION' || state.phase === 'RESOLVED') && (
           <ResolutionModal
             state={state}
             onNextRound={nextRound}
@@ -422,15 +538,21 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* Footer / Status bar */}
+      {/* Footer */}
       <footer className="w-full max-w-lg mx-auto py-2 px-4 flex items-center justify-between text-[11px] text-slate-500 z-10 border-t border-slate-800/80">
-        <span>Chor Police TMA v1.0</span>
+        <span>Chor Police TMA</span>
         <span className="flex items-center gap-1">
-          <span>{activePlayer?.name}</span>
-          {activePlayer?.currentRole && (
-            <span className="px-1.5 py-0.2 bg-slate-800 text-amber-300 font-bold rounded">
-              {activePlayer.currentRole}
-            </span>
+          {state.mode !== 'HUB' && activePlayer ? (
+            <>
+              <span>{activePlayer.name}</span>
+              {activePlayer.currentRole && (
+                <span className="px-1.5 py-0.2 bg-slate-800 text-amber-300 font-bold rounded">
+                  {activePlayer.currentRole}
+                </span>
+              )}
+            </>
+          ) : (
+            <span>{state.mode === 'HUB' ? 'Lobby Hub' : ''}</span>
           )}
         </span>
       </footer>
