@@ -61,10 +61,10 @@ Welcome to **`@chorpolicegamebot`**, the Telegram bot and Mini App for playing *
 2. **Deal & Hold to Peek:** Each player receives a folded 2D paper chit with a wax seal. **Press and hold** the chit to secretly unfold and view your role; release your finger to fold it back so nearby people cannot peek.
 3. **Royal Proclamation:** The **King** reveals themselves and taps **Summon the Police**.
 4. **Police Step-Up:** The **Police** steps forward (`I Am The Police!`).
-5. **The Syndicate Phase (10 seconds):**
+5. **The Syndicate Phase (25 seconds):**
    * The **Thief** can covertly trigger **Frame Suspect** (causes a nervous visual jitter on an innocent player's card) or **Offer Secret Bribe** (proposes a 50/50 point split to another suspect).
    * The **King** can trigger a one-time **Royal Decree**.
-6. **Police Interrogation:**
+6. **Police Interrogation (60 seconds):**
    * Suspects can tap quick defense/bluff dialogue buttons (`I swear on the Crown, I'm innocent!`, etc.), popping speech bubbles above their table seats in real time.
    * The **Police** taps a suspect card to inspect and presses **LOCK IN ARREST**.
    * *(If the Police disconnects or goes inactive when the timer runs low, the King receives a **Royal Emergency Verdict** button so the table never freezes).*

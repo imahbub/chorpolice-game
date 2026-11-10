@@ -219,8 +219,8 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
               </span>
             </button>
           )}
-          {/* Emergency Royal Verdict if Police drops out */}
-          {onEmergencyVerdict && activePlayerRole === 'RAJA' && timerSeconds <= 10 && (
+          {/* Emergency Royal Verdict if Police drops out (available after 45s) */}
+          {onEmergencyVerdict && activePlayerRole === 'RAJA' && timerSeconds <= 15 && (
             <button
               onClick={() => {
                 sound.playGavel();

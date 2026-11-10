@@ -43,6 +43,10 @@ const DEFAULT_NAMES = [
   'Maya (মায়া)',
 ];
 
+export const SABOTAGE_SECONDS = 25;
+export const INTERROGATION_SECONDS = 60;
+export const SPEECH_BUBBLE_MS = 7000;
+
 const CHARSET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 export function generateRoomCode() {
   let code = '';
@@ -104,7 +108,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     accusedId: null,
     sabotageType: 'NONE',
     sabotageTargetId: null,
-    timerSeconds: 10,
+    timerSeconds: SABOTAGE_SECONDS,
     kingDecreeUsed: false,
     decreeQuestion: null,
     decreeAnswers: {},
@@ -265,9 +269,9 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       timerSeconds:
         prev.phase !== phase
           ? phase === 'SABOTAGE'
-            ? 10
+            ? SABOTAGE_SECONDS
             : phase === 'INTERROGATION'
-            ? 25
+            ? INTERROGATION_SECONDS
             : prev.timerSeconds
           : prev.timerSeconds,
       roundResult,
@@ -315,7 +319,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 p.id === payload.playerId ? { ...p, speechBubble: undefined } : p
               ),
             }));
-          }, 4000);
+          }, SPEECH_BUBBLE_MS);
         })
         .on('broadcast', { event: 'suspect_hover' }, ({ payload }) => {
           if (payload?.suspectId) {
@@ -532,7 +536,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       accusedId: null,
       sabotageType: 'NONE',
       sabotageTargetId: null,
-      timerSeconds: 10,
+      timerSeconds: SABOTAGE_SECONDS,
       kingDecreeUsed: false,
       decreeQuestion: null,
       decreeAnswers: {},
@@ -766,7 +770,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updated: GameState = {
         ...prev,
         phase: 'SABOTAGE',
-        timerSeconds: 10,
+        timerSeconds: SABOTAGE_SECONDS,
         players: prev.players.map((p) =>
           p.id === prev.policeId ? { ...p, isRolePublic: true } : p
         ),
@@ -893,7 +897,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (prev.mode === 'LOCAL') broadcastLocalState(updated);
         return updated;
       });
-    }, 4000);
+    }, SPEECH_BUBBLE_MS);
   };
 
   const selectSuspect = (suspectId: string) => {
@@ -1039,7 +1043,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  // Phase timers handling (Sabotage 10s -> Interrogation 25s)
+  // Phase timers handling (Sabotage 25s -> Interrogation 60s)
   useEffect(() => {
     if (state.phase === 'SABOTAGE') {
       const interval = setInterval(() => {
@@ -1047,19 +1051,20 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (prev.timerSeconds <= 1) {
             clearInterval(interval);
             if (prev.mode === 'ONLINE' && supabase && prev.currentRoundId) {
-              // Host transitions DB round state to INTERROGATION
+              // Host or Police transitions DB round state to INTERROGATION
               const host = prev.players.find((p) => p.isHost);
-              if (host?.id === prev.activePlayerId) {
+              if (host?.id === prev.activePlayerId || prev.policeId === prev.activePlayerId) {
                 supabase
                   .from('game_rounds')
                   .update({ state: 'INTERROGATION' })
-                  .eq('id', prev.currentRoundId);
+                  .eq('id', prev.currentRoundId)
+                  .then(() => {});
               }
             }
             const updated: GameState = {
               ...prev,
               phase: 'INTERROGATION',
-              timerSeconds: 25,
+              timerSeconds: INTERROGATION_SECONDS,
             };
             if (prev.mode === 'LOCAL') broadcastLocalState(updated);
             return updated;
