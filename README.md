@@ -2,6 +2,8 @@
 
 An online, real-time multiplayer tabletop adaptation of the traditional Bangladeshi game **"Chor Police" (চোর পুলিশ)**, designed for Telegram group chats with authentic paper-chit physics and the new **"Syndicate"** sabotage twist.
 
+> 📖 **Player & Bot Usage Guide:** See [BOT_GUIDE.md](./BOT_GUIDE.md) for full instructions on `/play`, Groups & Topics, Custom Rooms, and gameplay rules.
+
 ---
 
 ## 🎮 Highlights & Features
