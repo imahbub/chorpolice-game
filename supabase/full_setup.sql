@@ -58,11 +58,15 @@ CREATE TABLE IF NOT EXISTS game_rounds (
     sabotage_type TEXT DEFAULT 'NONE',      -- 'FRAME', 'BRIBE', 'NONE'
     sabotage_target_id UUID REFERENCES profiles(id),
     bribe_accepted BOOLEAN DEFAULT FALSE,
+    bribe_responded BOOLEAN DEFAULT FALSE,
     king_decree_used BOOLEAN DEFAULT FALSE,
     police_guess_correct BOOLEAN,
     points_earned JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Ensure column exists if upgrading from earlier schema
+ALTER TABLE game_rounds ADD COLUMN IF NOT EXISTS bribe_responded BOOLEAN DEFAULT FALSE;
 
 -- 5. Secret Role Storage (Zero-Knowledge: Locked behind RLS + RPC)
 CREATE TABLE IF NOT EXISTS round_roles (
@@ -332,7 +336,113 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 7. Maintenance cleanup for stale rooms (>24h)
+-- 7. Autonomous AI Bot Turn Handler (Zero-Knowledge Safe)
+CREATE OR REPLACE FUNCTION process_bot_turn(p_round_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_round RECORD;
+    v_actor_id UUID;
+    v_is_bot BOOLEAN := FALSE;
+    v_target_id UUID;
+    v_sab_type TEXT;
+BEGIN
+    SELECT * INTO v_round FROM game_rounds WHERE id = p_round_id;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('acted', false, 'reason', 'round_not_found');
+    END IF;
+
+    -- PHASE: DEAL -> Check if RAJA is AI bot
+    IF v_round.state = 'DEAL' THEN
+        SELECT rr.profile_id, COALESCE(p.guest_id LIKE 'ai_bot_%', FALSE)
+        INTO v_actor_id, v_is_bot
+        FROM round_roles rr
+        JOIN profiles p ON p.id = rr.profile_id
+        WHERE rr.round_id = p_round_id AND rr.role = 'RAJA';
+
+        IF v_is_bot THEN
+            PERFORM reveal_king(p_round_id);
+            RETURN jsonb_build_object('acted', true, 'action', 'reveal_king');
+        END IF;
+
+    -- PHASE: ROYAL_CALL -> Check if POLICE is AI bot
+    ELSIF v_round.state = 'ROYAL_CALL' THEN
+        SELECT rr.profile_id, COALESCE(p.guest_id LIKE 'ai_bot_%', FALSE)
+        INTO v_actor_id, v_is_bot
+        FROM round_roles rr
+        JOIN profiles p ON p.id = rr.profile_id
+        WHERE rr.round_id = p_round_id AND rr.role = 'POLICE';
+
+        IF v_is_bot THEN
+            PERFORM reveal_police(p_round_id);
+            RETURN jsonb_build_object('acted', true, 'action', 'reveal_police');
+        END IF;
+
+    -- PHASE: SABOTAGE -> AI Thief acts or AI target responds to Bribe
+    ELSIF v_round.state = 'SABOTAGE' THEN
+        IF v_round.sabotage_type = 'NONE' THEN
+            SELECT rr.profile_id, COALESCE(p.guest_id LIKE 'ai_bot_%', FALSE)
+            INTO v_actor_id, v_is_bot
+            FROM round_roles rr
+            JOIN profiles p ON p.id = rr.profile_id
+            WHERE rr.round_id = p_round_id AND rr.role = 'CHOR';
+
+            IF v_is_bot THEN
+                SELECT rr.profile_id INTO v_target_id
+                FROM round_roles rr
+                WHERE rr.round_id = p_round_id AND rr.role NOT IN ('RAJA', 'POLICE', 'CHOR')
+                ORDER BY random() LIMIT 1;
+
+                IF v_target_id IS NOT NULL THEN
+                    IF random() < 0.65 THEN v_sab_type := 'FRAME'; ELSE v_sab_type := 'BRIBE'; END IF;
+                    UPDATE game_rounds
+                    SET sabotage_type = v_sab_type, sabotage_target_id = v_target_id
+                    WHERE id = p_round_id;
+                    RETURN jsonb_build_object('acted', true, 'action', 'bot_sabotage', 'type', v_sab_type);
+                END IF;
+            END IF;
+        ELSIF v_round.sabotage_type = 'BRIBE' AND NOT v_round.bribe_responded AND v_round.sabotage_target_id IS NOT NULL THEN
+            SELECT COALESCE(p.guest_id LIKE 'ai_bot_%', FALSE)
+            INTO v_is_bot
+            FROM profiles p WHERE p.id = v_round.sabotage_target_id;
+
+            IF v_is_bot THEN
+                UPDATE game_rounds
+                SET bribe_responded = TRUE, bribe_accepted = (random() < 0.55)
+                WHERE id = p_round_id;
+                RETURN jsonb_build_object('acted', true, 'action', 'bot_bribe_response');
+            END IF;
+        END IF;
+
+    -- PHASE: INTERROGATION -> Check if POLICE is AI bot
+    ELSIF v_round.state = 'INTERROGATION' THEN
+        SELECT rr.profile_id, COALESCE(p.guest_id LIKE 'ai_bot_%', FALSE)
+        INTO v_actor_id, v_is_bot
+        FROM round_roles rr
+        JOIN profiles p ON p.id = rr.profile_id
+        WHERE rr.round_id = p_round_id AND rr.role = 'POLICE';
+
+        IF v_is_bot THEN
+            IF v_round.sabotage_type = 'FRAME' AND v_round.sabotage_target_id IS NOT NULL AND random() < 0.60 THEN
+                v_target_id := v_round.sabotage_target_id;
+            ELSE
+                SELECT rr.profile_id INTO v_target_id
+                FROM round_roles rr
+                WHERE rr.round_id = p_round_id AND rr.role NOT IN ('RAJA', 'POLICE')
+                ORDER BY random() LIMIT 1;
+            END IF;
+
+            IF v_target_id IS NOT NULL THEN
+                PERFORM resolve_round(p_round_id, v_target_id);
+                RETURN jsonb_build_object('acted', true, 'action', 'bot_arrest', 'accused_id', v_target_id);
+            END IF;
+        END IF;
+    END IF;
+
+    RETURN jsonb_build_object('acted', false);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 8. Maintenance cleanup for stale rooms (>24h)
 CREATE OR REPLACE FUNCTION cleanup_stale_rooms()
 RETURNS INT AS $$
 DECLARE

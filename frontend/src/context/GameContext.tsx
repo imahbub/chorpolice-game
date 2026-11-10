@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { GameState, Player, Role, SabotageType } from '../types/game';
 import { getTelegramWebApp } from '../utils/telegram';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { ensureUserProfile, ensureBotProfile } from '../lib/identity';
+import { ensureUserProfile, ensureBotProfile, getTelegramAvatarUrl } from '../lib/identity';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 interface GameContextType {
@@ -28,6 +28,8 @@ interface GameContextType {
   lockInArrest: (suspectId: string) => Promise<void>;
   botPoliceGuess: () => void;
   emergencyVerdict: () => void;
+  showFinalRankings: () => Promise<void>;
+  endGameByHost: () => Promise<void>;
   nextRound: () => Promise<void>;
   resetGame: () => Promise<void>;
   changeMaxPlayers: (count: 4 | 5 | 6) => Promise<void>;
@@ -73,6 +75,7 @@ const createLocalPlayers = (maxPlayers: 4 | 5 | 6): Player[] => {
     name: i === 0 ? initialName : DEFAULT_NAMES[i] || `Player ${i + 1}`,
     username: i === 0 ? tgUser?.username : `player_${i + 1}`,
     avatarSeed: `avatar_${i + 1}`,
+    avatarUrl: i === 0 ? getTelegramAvatarUrl(tgUser) : null,
     seatIndex: i,
     isHost: i === 0,
     isReady: i === 0 ? true : true,
@@ -140,7 +143,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data: members } = await supabase
       .from('room_members')
-      .select('*, profiles(first_name, username, guest_id)')
+      .select('*, profiles(first_name, username, guest_id, avatar_url)')
       .eq('room_id', roomId)
       .order('seat_index', { ascending: true });
 
@@ -199,6 +202,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         name: m.profiles?.first_name || `Seat ${m.seat_index + 1}`,
         username: m.profiles?.username || undefined,
         avatarSeed: `avatar_${m.seat_index + 1}`,
+        avatarUrl: m.profiles?.avatar_url || null,
         seatIndex: m.seat_index,
         isHost: room.host_id === pid,
         isReady: m.is_ready,
@@ -213,6 +217,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
           latestRound?.sabotage_type === 'BRIBE' &&
           latestRound?.sabotage_target_id === pid &&
           !latestRound?.bribe_accepted &&
+          !latestRound?.bribe_responded &&
           latestRound?.state === 'SABOTAGE',
         bribeAccepted:
           latestRound?.bribe_accepted &&
@@ -220,9 +225,34 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     });
 
+    // If host closed the room with 0 points played, return players to Hub
+    if (room.status === 'FINISHED') {
+      const anyScore = mappedPlayers.some((p) => p.score > 0);
+      if (!anyScore) {
+        if (supaChannelRef.current && supabase) {
+          supabase.removeChannel(supaChannelRef.current);
+          supaChannelRef.current = null;
+        }
+        setState((prev) => ({
+          ...prev,
+          mode: 'HUB',
+          roomId: '',
+          roomCode: '',
+          currentRoundId: null,
+          players: [],
+          phase: 'LOBBY',
+          isLoading: false,
+          errorMessage: 'The host closed the room.',
+        }));
+        return;
+      }
+    }
+
     // Map DB state to frontend phase
     let phase: GameState['phase'] = 'LOBBY';
-    if (room.status === 'PLAYING' && latestRound) {
+    if (room.status === 'FINISHED') {
+      phase = 'GAME_OVER';
+    } else if (room.status === 'PLAYING' && latestRound) {
       phase = latestRound.state as GameState['phase'];
     }
 
@@ -811,7 +841,7 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (state.mode === 'ONLINE' && supabase && state.currentRoundId) {
       await supabase
         .from('game_rounds')
-        .update({ bribe_accepted: accepted })
+        .update({ bribe_accepted: accepted, bribe_responded: true })
         .eq('id', state.currentRoundId);
       return;
     }
@@ -1115,6 +1145,171 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 300);
   };
 
+  const showFinalRankings = async () => {
+    if (state.mode === 'ONLINE' && supabase && state.roomId) {
+      await supabase
+        .from('rooms')
+        .update({ status: 'FINISHED' })
+        .eq('id', state.roomId);
+      return;
+    }
+
+    setState((prev) => {
+      const updated: GameState = { ...prev, phase: 'GAME_OVER' };
+      broadcastLocalState(updated);
+      return updated;
+    });
+  };
+
+  const endGameByHost = async () => {
+    const anyScore = state.players.some((p) => p.score > 0);
+
+    if (state.mode === 'ONLINE' && supabase && state.roomId) {
+      await supabase
+        .from('rooms')
+        .update({ status: 'FINISHED' })
+        .eq('id', state.roomId);
+      if (!anyScore) {
+        leaveRoom();
+      }
+      return;
+    }
+
+    if (anyScore) {
+      setState((prev) => {
+        const updated: GameState = { ...prev, phase: 'GAME_OVER' };
+        broadcastLocalState(updated);
+        return updated;
+      });
+    } else {
+      leaveRoom();
+    }
+  };
+
+  // Autonomous AI Bot Turn Orchestrator (Online via RPC + Local simulation)
+  useEffect(() => {
+    if (state.mode === 'HUB') return;
+    const me = state.players.find((p) => p.id === state.activePlayerId);
+    if (state.mode === 'ONLINE' && !me?.isHost) return; // Only Host drives bot RPCs in Online mode
+
+    const timers: number[] = [];
+
+    if (state.phase === 'DEAL') {
+      // Wait 10 seconds so humans have plenty of time to hold & peek their chits
+      const t = window.setTimeout(() => {
+        if (state.mode === 'ONLINE' && supabase && state.currentRoundId) {
+          supabase.rpc('process_bot_turn', { p_round_id: state.currentRoundId }).then(() => {});
+        } else if (state.mode === 'LOCAL') {
+          const king = state.players.find((p) => p.currentRole === 'RAJA');
+          if (king?.isBot) triggerRoyalCall();
+        }
+      }, 10000);
+      timers.push(t);
+    }
+
+    if (state.phase === 'ROYAL_CALL') {
+      const t = window.setTimeout(() => {
+        if (state.mode === 'ONLINE' && supabase && state.currentRoundId) {
+          supabase.rpc('process_bot_turn', { p_round_id: state.currentRoundId }).then(() => {});
+        } else if (state.mode === 'LOCAL') {
+          const police = state.players.find((p) => p.currentRole === 'POLICE');
+          if (police?.isBot) triggerPoliceStep();
+        }
+      }, 3000);
+      timers.push(t);
+    }
+
+    if (state.phase === 'SABOTAGE') {
+      const t1 = window.setTimeout(() => {
+        if (state.mode === 'ONLINE' && supabase && state.currentRoundId) {
+          supabase.rpc('process_bot_turn', { p_round_id: state.currentRoundId }).then(() => {});
+        } else if (state.mode === 'LOCAL') {
+          const thief = state.players.find((p) => p.currentRole === 'CHOR');
+          if (thief?.isBot && state.sabotageType === 'NONE') {
+            const targets = state.players.filter((p) => p.id !== thief.id && !p.isRolePublic);
+            if (targets.length > 0) {
+              const target = targets[Math.floor(Math.random() * targets.length)];
+              const type: SabotageType = Math.random() < 0.65 ? 'FRAME' : 'BRIBE';
+              executeSabotage(type, target.id);
+            }
+          }
+        }
+      }, 4000);
+      timers.push(t1);
+
+      const t2 = window.setTimeout(() => {
+        if (state.mode === 'ONLINE' && supabase && state.currentRoundId) {
+          supabase.rpc('process_bot_turn', { p_round_id: state.currentRoundId }).then(() => {});
+        } else if (state.mode === 'LOCAL') {
+          const bribedBot = state.players.find((p) => p.isBot && p.hasBribeOffer);
+          if (bribedBot) {
+            const accepted = Math.random() < 0.55;
+            setState((prev) => {
+              const updated = {
+                ...prev,
+                players: prev.players.map((p) =>
+                  p.id === bribedBot.id ? { ...p, bribeAccepted: accepted, hasBribeOffer: false } : p
+                ),
+              };
+              broadcastLocalState(updated);
+              return updated;
+            });
+          }
+        }
+      }, 8000);
+      timers.push(t2);
+    }
+
+    if (state.phase === 'INTERROGATION') {
+      // AI suspect chatter bubble
+      const chatterTimer = window.setTimeout(() => {
+        const aiSuspects = state.players.filter((p) => p.isBot && !p.isRolePublic && p.id !== state.policeId);
+        if (aiSuspects.length > 0) {
+          const speaker = aiSuspects[Math.floor(Math.random() * aiSuspects.length)];
+          const lines =
+            language === 'bn'
+              ? ['রাজার কসম, আমি নির্দোষ!', 'আমার দিকে তাকাচ্ছেন কেন?!', 'ওর হাতের কাঁপুনি দেখুন!']
+              : ["I swear I'm innocent!", 'Look at his nervous hands!', 'Trust me, Inspector!'];
+          const text = lines[Math.floor(Math.random() * lines.length)];
+
+          if (state.mode === 'ONLINE' && supaChannelRef.current) {
+            supaChannelRef.current.send({
+              type: 'broadcast',
+              event: 'bluff',
+              payload: { playerId: speaker.id, text },
+            });
+          }
+          setState((prev) => ({
+            ...prev,
+            players: prev.players.map((p) => (p.id === speaker.id ? { ...p, speechBubble: text } : p)),
+          }));
+          window.setTimeout(() => {
+            setState((prev) => ({
+              ...prev,
+              players: prev.players.map((p) => (p.id === speaker.id ? { ...p, speechBubble: undefined } : p)),
+            }));
+          }, SPEECH_BUBBLE_MS);
+        }
+      }, 3000);
+      timers.push(chatterTimer);
+
+      // AI Police arrest decision after 7s
+      const arrestTimer = window.setTimeout(() => {
+        if (state.mode === 'ONLINE' && supabase && state.currentRoundId) {
+          supabase.rpc('process_bot_turn', { p_round_id: state.currentRoundId }).then(() => {});
+        } else if (state.mode === 'LOCAL') {
+          const police = state.players.find((p) => p.currentRole === 'POLICE');
+          if (police?.isBot) botPoliceGuess();
+        }
+      }, 7000);
+      timers.push(arrestTimer);
+    }
+
+    return () => {
+      timers.forEach((id) => window.clearTimeout(id));
+    };
+  }, [state.phase, state.mode, state.currentRoundId, state.sabotageType]);
+
   return (
     <GameContext.Provider
       value={{
@@ -1140,6 +1335,8 @@ export const GameProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lockInArrest,
         botPoliceGuess,
         emergencyVerdict,
+        showFinalRankings,
+        endGameByHost,
         nextRound,
         resetGame,
         changeMaxPlayers,

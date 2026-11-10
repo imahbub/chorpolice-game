@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { Player, Role } from '../../types/game';
+import { PlayerAvatar } from './PlayerAvatar';
 import { sound } from '../../utils/audio';
 import { haptic } from '../../utils/telegram';
 import { ShieldAlert, Search, Clock, MessageSquare, HandMetal, Bot, UserCheck, Crown } from 'lucide-react';
@@ -127,8 +128,13 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
                     <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-red-500 animate-ping" />
                   )}
 
-                  <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center font-black text-amber-300 text-sm mb-1 border border-white/20">
-                    {suspect.name.charAt(0).toUpperCase()}
+                  <div className="w-10 h-10 rounded-full mb-1 border border-white/20 overflow-hidden">
+                    <PlayerAvatar
+                      name={suspect.name}
+                      avatarUrl={suspect.avatarUrl}
+                      isBot={suspect.isBot}
+                      textClassName="text-sm"
+                    />
                   </div>
                   <span className="text-xs font-bold truncate max-w-full">
                     {suspect.name}
@@ -143,7 +149,7 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
 
           {/* Lock In Arrest Button */}
           <motion.button
-            whileTap={{ scale: 0.96 }}
+            whileTap={{ scale: 0.97 }}
             disabled={!selectedSuspectId}
             onClick={() => {
               if (selectedSuspectId) {
@@ -153,10 +159,10 @@ export const InterrogationHUD: React.FC<InterrogationHUDProps> = ({
                 onLockInArrest(selectedSuspectId);
               }
             }}
-            className={`w-full py-3 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xl border transition-all ${
+            className={`w-full py-3 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xl transition-all ${
               selectedSuspectId
-                ? 'bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 border-red-400 text-white cursor-pointer'
-                : 'bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed'
+                ? 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-400 hover:to-rose-500 border-b-4 border-red-900 active:border-b-0 active:translate-y-0.5 text-white cursor-pointer'
+                : 'bg-slate-800 border border-slate-700 text-slate-500 cursor-not-allowed'
             }`}
           >
             <ShieldAlert className="w-5 h-5" />

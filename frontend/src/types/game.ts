@@ -92,6 +92,7 @@ export type GamePhase =
   | 'ARREST'
   | 'RESOLUTION'
   | 'RESOLVED'
+  | 'GAME_OVER'
   | 'RECAP';
 
 export interface Player {
@@ -99,6 +100,7 @@ export interface Player {
   name: string;
   username?: string;
   avatarSeed: string;
+  avatarUrl?: string | null;
   seatIndex: number;
   isHost: boolean;
   isReady: boolean;

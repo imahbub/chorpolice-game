@@ -223,12 +223,67 @@ if (supabase) {
         }
       }
     )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'rooms', filter: 'status=eq.FINISHED' },
+      async (payload) => {
+        const room = payload.new;
+        if (!room || room.status !== 'FINISHED' || !room.telegram_chat_id) return;
+
+        try {
+          const { data: members } = await supabase
+            .from('room_members')
+            .select('score, profiles(first_name)')
+            .eq('room_id', room.id)
+            .order('score', { ascending: false });
+
+          if (!members || members.length === 0) return;
+
+          const hasPoints = members.some((m) => m.score > 0);
+          if (!hasPoints) {
+            await bot.api.sendMessage(
+              room.telegram_chat_id,
+              `🛑 *Table #${room.room_code} was closed by the host.*`,
+              {
+                parse_mode: 'Markdown',
+                ...(room.telegram_thread_id ? { message_thread_id: room.telegram_thread_id } : {}),
+              }
+            );
+            return;
+          }
+
+          const medals = ['🥇', '🥈', '🥉'];
+          let rankingText = '';
+          members.forEach((m, i) => {
+            const medal = medals[i] || `#${i + 1}`;
+            rankingText += `${medal} *${m.profiles?.first_name || 'Player'}* — ${m.score} pts\n`;
+          });
+
+          const winnerName = members[0]?.profiles?.first_name || 'Champion';
+          const message =
+            `🏆 *FINAL MATCH RESULTS — #${room.room_code}*\n` +
+            `👑 *Champion (চ্যাম্পিয়ন):* ${winnerName}!\n\n` +
+            `📊 *Final Rankings:*\n` +
+            rankingText;
+
+          await bot.api.sendMessage(room.telegram_chat_id, message, {
+            parse_mode: 'Markdown',
+            ...(room.telegram_thread_id ? { message_thread_id: room.telegram_thread_id } : {}),
+          });
+        } catch (err) {
+          console.error('Error posting final match summary:', err.message);
+        }
+      }
+    )
     .subscribe();
 }
 
-// Lightweight HTTP Health Check server (binds to 0.0.0.0 for Render)
+// In-memory avatar cache (telegramId -> { buffer, contentType, expiresAt })
+const avatarCache = new Map();
+
+// Lightweight HTTP Health Check & Secure Avatar Proxy Server
 const PORT = parseInt(process.env.PORT || '3000', 10);
-const healthServer = http.createServer((req, res) => {
+const healthServer = http.createServer(async (req, res) => {
   if (req.url === '/health' || req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(
@@ -239,10 +294,71 @@ const healthServer = http.createServer((req, res) => {
         uptime: process.uptime(),
       })
     );
-  } else {
-    res.writeHead(404);
-    res.end();
+    return;
   }
+
+  // Proxy Telegram User Profile Photo securely without exposing BOT_TOKEN
+  const avatarMatch = req.url?.match(/^\/avatar\/(\d+)/);
+  if (avatarMatch && BOT_TOKEN && BOT_TOKEN !== 'DUMMY_TOKEN') {
+    const userId = parseInt(avatarMatch[1], 10);
+    const cached = avatarCache.get(userId);
+    if (cached && cached.expiresAt > Date.now()) {
+      res.writeHead(200, {
+        'Content-Type': cached.contentType,
+        'Cache-Control': 'public, max-age=3600',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(cached.buffer);
+      return;
+    }
+
+    try {
+      const photos = await bot.api.getUserProfilePhotos(userId, { limit: 1 });
+      const sizes = photos?.photos?.[0];
+      const bestPhoto = sizes?.[sizes.length - 1] || sizes?.[0];
+      if (!bestPhoto?.file_id) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+
+      const fileInfo = await bot.api.getFile(bestPhoto.file_id);
+      if (!fileInfo?.file_path) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+
+      const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${fileInfo.file_path}`;
+      const imgRes = await fetch(fileUrl);
+      if (!imgRes.ok) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+
+      const arrayBuf = await imgRes.arrayBuffer();
+      const buffer = Buffer.from(arrayBuf);
+      const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+
+      avatarCache.set(userId, { buffer, contentType, expiresAt: Date.now() + 3600 * 1000 });
+
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Cache-Control': 'public, max-age=3600',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(buffer);
+      return;
+    } catch {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+  }
+
+  res.writeHead(404);
+  res.end();
 });
 
 healthServer.listen(PORT, '0.0.0.0', () => {

@@ -57,7 +57,7 @@ export const ChitCard: React.FC<ChitCardProps> = ({
       onContextMenu={(e) => e.preventDefault()}
     >
       <motion.div
-        className="relative w-64 h-84 sm:w-72 sm:h-96 rounded-2xl cursor-pointer perspective-1000"
+        className="relative w-64 h-80 sm:w-72 sm:h-96 rounded-2xl cursor-pointer perspective-1000"
         whileHover={!disabled && !isPubliclyRevealed ? { scale: 1.02 } : {}}
         whileTap={!disabled && !isPubliclyRevealed ? { scale: 0.98 } : {}}
         animate={{
@@ -97,7 +97,7 @@ export const ChitCard: React.FC<ChitCardProps> = ({
                 <div className="relative group">
                   {/* Wax drip shadow */}
                   <div className="w-24 h-24 rounded-full bg-red-700/80 shadow-[0_4px_16px_rgba(185,28,28,0.5)] flex items-center justify-center border-4 border-red-900">
-                    <div className="w-18 h-18 rounded-full border-2 border-dashed border-red-300/40 flex items-center justify-center p-3">
+                    <div className="w-20 h-20 rounded-full border-2 border-dashed border-red-300/40 flex items-center justify-center p-3">
                       <svg viewBox="0 0 100 100" className="w-12 h-12 fill-red-100">
                         <polygon points="50,15 63,40 90,40 68,57 76,82 50,67 24,82 32,57 10,40 37,40" />
                       </svg>

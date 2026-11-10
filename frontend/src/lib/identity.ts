@@ -31,12 +31,20 @@ export function saveGuestName(name: string) {
   localStorage.setItem(GUEST_NAME_KEY, name);
 }
 
+export function getTelegramAvatarUrl(tgUser?: { id: number; photo_url?: string } | null): string | null {
+  if (!tgUser) return null;
+  if (tgUser.photo_url) return tgUser.photo_url;
+  const botServer = (import.meta.env.VITE_BOT_SERVER_URL as string | undefined) || 'https://chorpolice-game.onrender.com';
+  return `${botServer.replace(/\/$/, '')}/avatar/${tgUser.id}`;
+}
+
 export async function ensureUserProfile(customName?: string): Promise<UserProfile | null> {
   if (!supabase) return null;
 
   const tgUser = getTelegramWebApp()?.initDataUnsafe?.user;
 
   if (tgUser) {
+    const avatarUrl = getTelegramAvatarUrl(tgUser);
     const { data, error } = await supabase
       .from('profiles')
       .upsert(
@@ -45,7 +53,7 @@ export async function ensureUserProfile(customName?: string): Promise<UserProfil
           first_name: tgUser.first_name,
           last_name: tgUser.last_name || null,
           username: tgUser.username || null,
-          avatar_url: tgUser.photo_url || null,
+          avatar_url: avatarUrl,
         },
         { onConflict: 'telegram_id' }
       )

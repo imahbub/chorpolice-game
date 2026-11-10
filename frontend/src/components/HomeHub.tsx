@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { RoleBadge } from './2d/RoleBadge';
+import { PlayerAvatar } from './2d/PlayerAvatar';
 import { getTelegramWebApp } from '../utils/telegram';
-import { getSavedGuestName } from '../lib/identity';
+import { getSavedGuestName, getTelegramAvatarUrl } from '../lib/identity';
 import { sound } from '../utils/audio';
 import { haptic } from '../utils/telegram';
 import { Crown, KeyRound, PlusCircle, Bot, Users, Sparkles, AlertCircle } from 'lucide-react';
@@ -61,20 +62,23 @@ export const HomeHub: React.FC<HomeHubProps> = ({
         </p>
       </motion.div>
 
-      {/* Player Identity Badge (Editable if not inside Telegram) */}
-      <div className="bg-slate-900/90 border border-slate-700/80 rounded-2xl p-3 flex items-center justify-between shadow-lg">
-        <div className="flex items-center gap-2.5 flex-1">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 to-amber-700 flex items-center justify-center font-black text-black text-base shadow">
-            {(tgUser?.first_name || guestName || 'P').charAt(0).toUpperCase()}
+      {/* Player Identity Badge */}
+      <div className="bg-slate-900/90 border border-slate-700/80 rounded-2xl p-2.5 flex items-center justify-between shadow-lg">
+        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+          <div className="w-10 h-10 rounded-full border-2 border-amber-400/60 shrink-0 overflow-hidden shadow">
+            <PlayerAvatar
+              name={tgUser?.first_name || guestName || 'Player'}
+              avatarUrl={getTelegramAvatarUrl(tgUser)}
+            />
           </div>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400 block">
               {tgUser
                 ? language === 'bn' ? 'টেলিগ্রাম প্রোফাইল' : 'Telegram Account'
                 : language === 'bn' ? 'আপনার নাম' : 'Display Name'}
             </span>
             {tgUser ? (
-              <span className="text-sm font-black text-white">
+              <span className="text-sm font-black text-white truncate block">
                 {tgUser.first_name} {tgUser.username ? `(@${tgUser.username})` : ''}
               </span>
             ) : (
@@ -125,7 +129,7 @@ export const HomeHub: React.FC<HomeHubProps> = ({
           <button
             type="submit"
             disabled={isLoading || !joinCode.trim()}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-black text-xs rounded-xl shadow-lg transition-all cursor-pointer"
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:border-slate-800 disabled:text-slate-500 text-white font-black text-xs rounded-xl border-b-4 border-blue-800 active:border-b-0 active:translate-y-0.5 shadow-lg transition-all cursor-pointer"
           >
             {isLoading ? '...' : language === 'bn' ? 'যোগ দিন' : 'JOIN'}
           </button>
@@ -203,7 +207,7 @@ export const HomeHub: React.FC<HomeHubProps> = ({
             haptic.impact('heavy');
             onCreateRoom(maxPlayers, maxRounds, guestName);
           }}
-          className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-sm rounded-xl shadow-xl flex items-center justify-center gap-2 cursor-pointer border border-amber-300"
+          className="w-full py-3 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-sm rounded-xl border-b-4 border-amber-700 active:border-b-0 active:translate-y-0.5 shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all"
         >
           <PlusCircle className="w-4 h-4" />
           <span>
@@ -222,7 +226,7 @@ export const HomeHub: React.FC<HomeHubProps> = ({
           haptic.impact('medium');
           onStartLocalPractice(maxPlayers);
         }}
-        className="w-full py-2.5 bg-slate-800/80 hover:bg-slate-800 border border-slate-700 rounded-xl text-xs font-bold text-slate-300 flex items-center justify-center gap-2 cursor-pointer"
+        className="w-full py-2.5 bg-slate-800/90 hover:bg-slate-800 border border-slate-600 border-b-4 border-b-slate-950 active:border-b active:translate-y-0.5 rounded-xl text-xs font-bold text-slate-200 flex items-center justify-center gap-2 cursor-pointer transition-all"
       >
         <Bot className="w-4 h-4 text-emerald-400" />
         <span>

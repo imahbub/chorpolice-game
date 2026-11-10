@@ -6,6 +6,7 @@ import { TableSeats } from './components/2d/TableSeats';
 import { SabotageHUD } from './components/2d/SabotageHUD';
 import { InterrogationHUD } from './components/2d/InterrogationHUD';
 import { ResolutionModal } from './components/2d/ResolutionModal';
+import { GameOverModal } from './components/2d/GameOverModal';
 import { DevModeSwitcher } from './components/DevModeSwitcher';
 import { RoleBadge } from './components/2d/RoleBadge';
 import { sound } from './utils/audio';
@@ -25,6 +26,7 @@ import {
   Copy,
   Bot,
   AlertCircle,
+  Flag,
 } from 'lucide-react';
 import { Role, ROLE_CONFIGS } from './types/game';
 
@@ -51,6 +53,8 @@ export const App: React.FC = () => {
     lockInArrest,
     botPoliceGuess,
     emergencyVerdict,
+    showFinalRankings,
+    endGameByHost,
     nextRound,
     resetGame,
     changeMaxPlayers,
@@ -59,6 +63,7 @@ export const App: React.FC = () => {
 
   const [copiedCode, setCopiedCode] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
   const [isMuted, setIsMuted] = useState(sound.getMuted());
 
   const handleToggleSound = () => {
@@ -172,6 +177,16 @@ export const App: React.FC = () => {
             <BookOpen className="w-3.5 h-3.5" />
           </button>
 
+          {state.mode !== 'HUB' && isHost && (
+            <button
+              onClick={() => setShowEndConfirm(true)}
+              className="p-1.5 bg-red-950/70 hover:bg-red-800/80 rounded-full text-red-300 border border-red-500/40 cursor-pointer"
+              title={language === 'bn' ? 'ম্যাচ শেষ করুন' : 'End Game'}
+            >
+              <Flag className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           {state.mode !== 'HUB' && (
             <button
               onClick={leaveRoom}
@@ -183,6 +198,48 @@ export const App: React.FC = () => {
           )}
         </div>
       </header>
+
+      {/* Host End Game Confirmation Modal */}
+      {showEndConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="w-full max-w-sm bg-slate-900 border-2 border-red-500/50 rounded-3xl p-5 text-center shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-red-500/20 border border-red-400/50 flex items-center justify-center mx-auto mb-3">
+              <Flag className="w-6 h-6 text-red-400" />
+            </div>
+            <h3 className="text-lg font-black text-white">
+              {language === 'bn' ? 'খেলা শেষ করবেন?' : 'End Match Now?'}
+            </h3>
+            <p className="text-xs text-slate-300 mt-1 mb-4">
+              {state.players.some((p) => p.score > 0)
+                ? language === 'bn'
+                  ? 'বর্তমান স্কোরের ভিত্তিতে চূড়ান্ত ফলাফল ও র‍্যাংকিং সবার কাছে দেখানো হবে।'
+                  : 'This will end the match for everyone and show final rankings.'
+                : language === 'bn'
+                ? 'এতে রুমটি বন্ধ হয়ে যাবে এবং সবাই হোম মেনুতে ফিরে যাবে।'
+                : 'This will drop the room and return all players to the Hub.'}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowEndConfirm(false)}
+                className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-600 cursor-pointer"
+              >
+                {language === 'bn' ? 'বাতিল' : 'Cancel'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowEndConfirm(false);
+                  sound.playGavel();
+                  haptic.impact('heavy');
+                  endGameByHost();
+                }}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white font-black text-xs rounded-xl border-b-4 border-red-900 active:border-b-0 active:translate-y-0.5 cursor-pointer"
+              >
+                {language === 'bn' ? 'হ্যাঁ, শেষ করুন' : 'End Match'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Rules Modal */}
       {showRules && (
@@ -294,7 +351,7 @@ export const App: React.FC = () => {
             />
 
             {/* Lobby Actions */}
-            <div className="w-full mt-3 space-y-2">
+            <div className="w-full mt-2 space-y-2">
               <div className="flex gap-2">
                 {/* Ready Button */}
                 <button
@@ -303,21 +360,21 @@ export const App: React.FC = () => {
                     sound.playPaperRustle();
                     haptic.impact('medium');
                   }}
-                  className={`flex-1 py-3 px-4 rounded-xl font-black text-sm flex items-center justify-center gap-2 border transition-all cursor-pointer ${
+                  className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     activePlayer?.isReady
-                      ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white shadow-lg'
-                      : 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-300'
+                      ? 'bg-emerald-500 hover:bg-emerald-400 border-b-4 border-emerald-800 active:border-b-0 active:translate-y-0.5 text-white shadow-lg'
+                      : 'bg-slate-800 hover:bg-slate-700 border border-slate-600 border-b-4 border-b-slate-950 active:border-b active:translate-y-0.5 text-slate-200'
                   }`}
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span className="truncate">
                     {activePlayer?.isReady
                       ? language === 'bn' ? 'প্রস্তুত ✓' : 'Ready ✓'
                       : language === 'bn' ? 'প্রস্তুত হন' : 'Get Ready'}
                   </span>
                 </button>
 
-                {/* Add AI Bot Button (When room has empty seats) */}
+                {/* Add AI Bot Button */}
                 {isHost && state.players.length < state.maxPlayers && (
                   <button
                     onClick={() => {
@@ -325,7 +382,7 @@ export const App: React.FC = () => {
                       sound.playPaperRustle();
                       haptic.selection();
                     }}
-                    className="py-3 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 text-amber-300 cursor-pointer"
+                    className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-600 border-b-4 border-b-slate-950 active:border-b active:translate-y-0.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 text-amber-300 cursor-pointer shrink-0 transition-all"
                   >
                     <Bot className="w-4 h-4" />
                     <span>{language === 'bn' ? '+ এআই' : '+ AI Bot'}</span>
@@ -342,20 +399,20 @@ export const App: React.FC = () => {
                     sound.playGavel();
                     haptic.impact('heavy');
                   }}
-                  className={`w-full py-3.5 font-black text-sm rounded-xl shadow-xl flex items-center justify-center gap-2 border transition-all ${
+                  className={`w-full py-3 font-black text-sm rounded-xl shadow-xl flex items-center justify-center gap-2 transition-all ${
                     state.players.length >= 4
-                      ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black border-amber-300 cursor-pointer'
-                      : 'bg-slate-800 border-slate-700 text-slate-500 cursor-not-allowed'
+                      ? 'bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 border-b-4 border-amber-700 active:border-b-0 active:translate-y-0.5 cursor-pointer'
+                      : 'bg-slate-800 border border-slate-700 text-slate-500 cursor-not-allowed'
                   }`}
                 >
-                  <Play className="w-4 h-4 fill-current" />
+                  <Play className="w-4 h-4 fill-current shrink-0" />
                   <span>
                     {state.players.length < 4
                       ? language === 'bn'
-                        ? `শুরু করতে আরও ${4 - state.players.length} জন প্রয়োজন`
-                        : `Need ${4 - state.players.length} more player(s) to deal`
+                        ? `আরও ${4 - state.players.length} জন প্রয়োজন`
+                        : `Need ${4 - state.players.length} more to start`
                       : language === 'bn'
-                      ? 'চিট বণ্টন করুন ও খেলা শুরু'
+                      ? 'চিট বণ্টন করুন ও শুরু'
                       : 'DEAL CHITS & START'}
                   </span>
                 </button>
@@ -396,13 +453,13 @@ export const App: React.FC = () => {
                     sound.playGavel();
                     haptic.impact('heavy');
                   }}
-                  className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-sm rounded-xl shadow-xl flex items-center justify-center gap-2 cursor-pointer animate-bounce"
+                  className="w-full py-3 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black text-sm rounded-xl border-b-4 border-amber-700 active:border-b-0 active:translate-y-0.5 shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all"
                 >
-                  <Crown className="w-5 h-5 fill-black" />
+                  <Crown className="w-5 h-5 fill-slate-950 shrink-0" />
                   <span>
                     {language === 'bn'
-                      ? 'রাজকীয় ঘোষণা: পুলিশ তলব করুন!'
-                      : 'ROYAL PROCLAMATION: SUMMON THE POLICE!'}
+                      ? 'রাজকীয় ঘোষণা: পুলিশ তলব!'
+                      : 'SUMMON THE POLICE!'}
                   </span>
                 </button>
               </div>
@@ -414,7 +471,7 @@ export const App: React.FC = () => {
                 <span>
                   {language === 'bn'
                     ? 'রাজার রাজকীয় ঘোষণার অপেক্ষায়...'
-                    : 'Waiting for the King to proclaim the court...'}
+                    : 'Waiting for the King to summon the Police...'}
                 </span>
               </div>
             )}
@@ -443,11 +500,11 @@ export const App: React.FC = () => {
                   sound.playPoliceAlert();
                   haptic.impact('heavy');
                 }}
-                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white font-black text-sm rounded-xl shadow-xl flex items-center justify-center gap-2 cursor-pointer border border-blue-400 animate-pulse"
+                className="w-full py-3.5 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-400 hover:to-blue-500 text-white font-black text-sm rounded-xl border-b-4 border-blue-900 active:border-b-0 active:translate-y-0.5 shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all"
               >
-                <ShieldCheck className="w-5 h-5" />
+                <ShieldCheck className="w-5 h-5 shrink-0" />
                 <span>
-                  {language === 'bn' ? 'আমিই পুলিশ! তদন্ত শুরু করুন' : 'I AM THE POLICE! COMMENCE INVESTIGATION'}
+                  {language === 'bn' ? 'আমিই পুলিশ! তদন্ত শুরু করুন' : 'I AM THE POLICE! STEP FORTH'}
                 </span>
               </button>
             ) : (
@@ -523,8 +580,19 @@ export const App: React.FC = () => {
           <ResolutionModal
             state={state}
             onNextRound={nextRound}
-            onResetGame={resetGame}
+            onShowFinalRankings={showFinalRankings}
             isHost={isHost}
+            language={language}
+          />
+        )}
+
+        {/* PHASE 7: FINAL GAME OVER PODIUM & RANKINGS */}
+        {state.mode !== 'HUB' && state.phase === 'GAME_OVER' && (
+          <GameOverModal
+            state={state}
+            isHost={isHost}
+            onRematch={resetGame}
+            onLeaveRoom={leaveRoom}
             language={language}
           />
         )}
@@ -538,7 +606,7 @@ export const App: React.FC = () => {
             <>
               <span>{activePlayer.name}</span>
               {activePlayer.currentRole && (
-                <span className="px-1.5 py-0.2 bg-slate-800 text-amber-300 font-bold rounded">
+                <span className="px-1.5 py-0.5 bg-slate-800 text-amber-300 font-bold rounded">
                   {activePlayer.currentRole}
                 </span>
               )}
