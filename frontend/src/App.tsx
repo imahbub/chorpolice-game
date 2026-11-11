@@ -599,7 +599,7 @@ export const App: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="w-full max-w-lg mx-auto py-2 px-4 flex items-center justify-between text-[11px] text-slate-500 z-10 border-t border-slate-800/80">
+      <footer className="w-full max-w-lg mx-auto pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] px-6 flex items-center justify-between text-[11px] text-slate-500 z-10 border-t border-slate-800/80">
         <span>Chor Police TMA</span>
         <span className="flex items-center gap-1">
           {state.mode !== 'HUB' && activePlayer ? (

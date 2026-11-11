@@ -117,19 +117,19 @@ export const HomeHub: React.FC<HomeHubProps> = ({
           <span>{language === 'bn' ? 'কোড দিয়ে রুমে যোগ দিন' : 'Join with Room Code'}</span>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex items-stretch gap-2 w-full">
           <input
             type="text"
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             placeholder="CP-7K9X2M"
             maxLength={9}
-            className="flex-1 bg-slate-800 border border-slate-600 rounded-xl px-3 py-2.5 text-sm font-black tracking-widest text-amber-300 placeholder:text-slate-500 uppercase focus:outline-none focus:border-blue-400"
+            className="flex-1 min-w-0 w-full bg-slate-800 border border-slate-600 rounded-xl px-3 py-2.5 text-sm font-black tracking-wider text-amber-300 placeholder:text-slate-500 uppercase focus:outline-none focus:border-blue-400"
           />
           <button
             type="submit"
             disabled={isLoading || !joinCode.trim()}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:border-slate-800 disabled:text-slate-500 text-white font-black text-xs rounded-xl border-b-4 border-blue-800 active:border-b-0 active:translate-y-0.5 shadow-lg transition-all cursor-pointer"
+            className="shrink-0 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:border-slate-800 disabled:text-slate-500 text-white font-black text-xs rounded-xl border-b-4 border-blue-800 active:border-b-0 active:translate-y-0.5 shadow-lg transition-all cursor-pointer"
           >
             {isLoading ? '...' : language === 'bn' ? 'যোগ দিন' : 'JOIN'}
           </button>
